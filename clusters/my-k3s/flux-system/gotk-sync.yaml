@@ -11,7 +11,7 @@ spec:
     branch: main
   secretRef:
     name: flux-system
-  url: ssh://Yamil-L@github.com/Yamil-L/App-k8s
+  url: ssh://git@github.com/Yamil-L/App-k8s
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
