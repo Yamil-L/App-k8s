@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hello-servicemonitor
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: hello
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
