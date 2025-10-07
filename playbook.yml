@@ -1,0 +1,359 @@
+---
+# playbook.yml - Despliegue automatizado de Text Processor en K3D
+- name: Deploy Text Processor Microservices on K3D
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  
+  vars:
+    project_root: "/mnt/d/U/cloud/parcial/repo-root"
+    cluster_name: "mycluster"
+    namespace: "text-processor"
+    gemini_api_key: "AIzaSyBe2a4PcYYj8uMJmJdgXFoeapXrb92uQyA"
+    
+    # Versiones de imágenes
+    backend_version: "v3"
+    frontend_version: "v2"
+    microservices_version: "v5"
+    
+    # Microservicios a desplegar
+    microservices:
+      - name: translation
+        port: 8001
+      - name: summary
+        port: 8002
+      - name: analytics
+        port: 8003
+      - name: improve
+        port: 8004
+      - name: keywords
+        port: 8005
+    
+    # Componentes de monitoreo
+    enable_prometheus: yes
+    enable_fluentd: yes
+    enable_flux: no
+
+  tasks:
+    # ============================================
+    # FASE 1: Verificación de prerequisitos
+    # ============================================
+    - name: Verificar que K3D está instalado
+      command: k3d version
+      register: k3d_check
+      changed_when: false
+      failed_when: k3d_check.rc != 0
+
+    - name: Verificar que kubectl está instalado
+      command: kubectl version --client
+      register: kubectl_check
+      changed_when: false
+      failed_when: kubectl_check.rc != 0
+
+    - name: Verificar que Docker está corriendo
+      command: docker ps
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+
+    - name: Mostrar información del cluster
+      command: k3d cluster list
+      register: cluster_list
+      changed_when: false
+
+    - name: Verificar que el cluster existe
+      assert:
+        that:
+          - "'{{ cluster_name }}' in cluster_list.stdout"
+        fail_msg: "El cluster {{ cluster_name }} no existe. Créalo con: k3d cluster create {{ cluster_name }} --servers 3"
+
+    # ============================================
+    # FASE 2: Crear namespace y secrets
+    # ============================================
+    - name: Crear namespace text-processor
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+        state: present
+
+    - name: Crear secret para Gemini API Key
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: gemini-api-key
+            namespace: "{{ namespace }}"
+          type: Opaque
+          stringData:
+            GEMINI_API_KEY: "{{ gemini_api_key }}"
+
+    # ============================================
+    # FASE 3: Desplegar PostgreSQL
+    # ============================================
+    - name: Desplegar PostgreSQL
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ project_root }}/k8s/postgres.yaml"
+
+    - name: Esperar a que PostgreSQL esté listo
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=postgres
+      register: postgres_pod
+      until: postgres_pod.resources[0].status.phase == "Running"
+      retries: 30
+      delay: 10
+
+    # ============================================
+    # FASE 4: Construir y desplegar Backend
+    # ============================================
+    - name: Construir imagen del backend
+      community.docker.docker_image:
+        name: "text-processor-backend"
+        tag: "{{ backend_version }}"
+        build:
+          path: "{{ project_root }}/backend"
+        source: build
+        state: present
+
+    - name: Importar imagen del backend a K3D
+      command: k3d image import text-processor-backend:{{ backend_version }} -c {{ cluster_name }}
+      register: import_backend
+      changed_when: "'Successfully imported' in import_backend.stdout"
+
+    - name: Desplegar backend
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ project_root }}/k8s/backend.yaml"
+
+    - name: Esperar a que el backend esté listo
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=backend
+      register: backend_pods
+      until: backend_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+      retries: 20
+      delay: 10
+
+    # ============================================
+    # FASE 5: Construir y desplegar Frontend
+    # ============================================
+    - name: Construir imagen del frontend
+      community.docker.docker_image:
+        name: "text-processor-frontend"
+        tag: "{{ frontend_version }}"
+        build:
+          path: "{{ project_root }}/frontend"
+        source: build
+        state: present
+
+    - name: Importar imagen del frontend a K3D
+      command: k3d image import text-processor-frontend:{{ frontend_version }} -c {{ cluster_name }}
+      register: import_frontend
+      changed_when: "'Successfully imported' in import_frontend.stdout"
+
+    - name: Desplegar frontend
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ project_root }}/k8s/frontend.yaml"
+
+    # ============================================
+    # FASE 6: Construir y desplegar Microservicios
+    # ============================================
+    - name: Construir imágenes de microservicios
+      community.docker.docker_image:
+        name: "text-processor-{{ item.name }}"
+        tag: "{{ microservices_version }}"
+        build:
+          path: "{{ project_root }}/microservices/{{ item.name }}"
+        source: build
+        state: present
+      loop: "{{ microservices }}"
+
+    - name: Importar imágenes de microservicios a K3D
+      command: k3d image import text-processor-{{ item.name }}:{{ microservices_version }} -c {{ cluster_name }}
+      loop: "{{ microservices }}"
+      register: import_microservices
+      changed_when: "'Successfully imported' in import_microservices.stdout"
+
+    - name: Desplegar microservicios
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ project_root }}/k8s/microservices.yaml"
+
+    - name: Esperar a que los microservicios estén listos
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - "app={{ item.name }}"
+      register: microservice_pods
+      until: microservice_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length >= 1
+      retries: 30
+      delay: 10
+      loop: "{{ microservices }}"
+
+    # ============================================
+    # FASE 7: Configurar HPA (Horizontal Pod Autoscaler)
+    # ============================================
+    - name: Crear HPA para backend
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: autoscaling/v2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: backend-hpa
+            namespace: "{{ namespace }}"
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: backend
+            minReplicas: 2
+            maxReplicas: 5
+            metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 50
+
+    - name: Crear HPA para microservicios
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: autoscaling/v2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: "{{ item.name }}-hpa"
+            namespace: "{{ namespace }}"
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: "{{ item.name }}"
+            minReplicas: 1
+            maxReplicas: 3
+            metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 70
+      loop: "{{ microservices }}"
+
+    # ============================================
+    # FASE 8: Desplegar Prometheus (opcional)
+    # ============================================
+    - name: Crear namespace de monitoring
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: monitoring
+        state: present
+      when: enable_prometheus
+
+    - name: Agregar repositorio de Helm para Prometheus
+      kubernetes.core.helm_repository:
+        name: prometheus-community
+        repo_url: https://prometheus-community.github.io/helm-charts
+      when: enable_prometheus
+
+    - name: Instalar Prometheus Stack
+      kubernetes.core.helm:
+        name: prometheus
+        chart_ref: prometheus-community/kube-prometheus-stack
+        release_namespace: monitoring
+        create_namespace: yes
+      when: enable_prometheus
+
+    # ============================================
+    # FASE 9: Desplegar Fluentd (opcional)
+    # ============================================
+    - name: Crear namespace de logging
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: logging
+        state: present
+      when: enable_fluentd
+
+    - name: Desplegar Fluentd DaemonSet
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ project_root }}/k8s/fluentd.yaml"
+      when: enable_fluentd
+
+    # ============================================
+    # FASE 10: Verificación final
+    # ============================================
+    - name: Obtener todos los pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+      register: all_pods
+
+    - name: Mostrar estado de los pods
+      debug:
+        msg: "{{ item.metadata.name }}: {{ item.status.phase }}"
+      loop: "{{ all_pods.resources }}"
+
+    - name: Obtener servicios
+      kubernetes.core.k8s_info:
+        kind: Service
+        namespace: "{{ namespace }}"
+      register: all_services
+
+    - name: Mostrar servicios
+      debug:
+        msg: "{{ item.metadata.name }}: {{ item.spec.type }} - {{ item.spec.clusterIP }}"
+      loop: "{{ all_services.resources }}"
+
+    - name: Verificar HPA
+      kubernetes.core.k8s_info:
+        kind: HorizontalPodAutoscaler
+        namespace: "{{ namespace }}"
+      register: hpa_info
+
+    - name: Mostrar estado de HPAs
+      debug:
+        msg: "{{ item.metadata.name }}: Current {{ item.status.currentReplicas | default(0) }}/{{ item.spec.maxReplicas }}"
+      loop: "{{ hpa_info.resources }}"
+
+    # ============================================
+    # RESUMEN FINAL
+    # ============================================
+    - name: Mostrar resumen del despliegue
+      debug:
+        msg:
+          - "============================================"
+          - "  DESPLIEGUE COMPLETADO EXITOSAMENTE"
+          - "============================================"
+          - ""
+          - "Namespace: {{ namespace }}"
+          - "Cluster: {{ cluster_name }}"
+          - ""
+          - "Para acceder a la aplicación:"
+          - "  kubectl port-forward -n {{ namespace }} svc/frontend 8080:80"
+          - "  Abrir: http://localhost:8080"
+          - ""
+          - "Para ver métricas:"
+          - "  kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 9090:9090"
+          - "  kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80"
+          - ""
+          - "Para ver pods:"
+          - "  kubectl get pods -n {{ namespace }}"
+          - ""
+          - "Para ver HPAs:"
+          - "  kubectl get hpa -n {{ namespace }}"
+          - "============================================"

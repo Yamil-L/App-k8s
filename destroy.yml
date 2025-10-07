@@ -1,0 +1,151 @@
+---
+# destroy.yml - Eliminar todos los recursos desplegados
+- name: Destroy Text Processor Deployment
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  
+  vars:
+    namespace: "text-processor"
+    cluster_name: "mycluster"
+    
+  tasks:
+    - name: Eliminar HPAs
+      kubernetes.core.k8s:
+        api_version: autoscaling/v2
+        kind: HorizontalPodAutoscaler
+        namespace: "{{ namespace }}"
+        state: absent
+        name: "{{ item }}"
+      loop:
+        - backend-hpa
+        - translation-hpa
+        - summary-hpa
+        - analytics-hpa
+        - improve-hpa
+        - keywords-hpa
+      ignore_errors: yes
+
+    - name: Eliminar deployments de microservicios
+      kubernetes.core.k8s:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ namespace }}"
+        state: absent
+        name: "{{ item }}"
+      loop:
+        - backend
+        - frontend
+        - postgres
+        - translation
+        - summary
+        - analytics
+        - improve
+        - keywords
+      ignore_errors: yes
+
+    - name: Eliminar servicios
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Service
+        namespace: "{{ namespace }}"
+        state: absent
+        name: "{{ item }}"
+      loop:
+        - backend
+        - frontend
+        - postgres
+        - translation
+        - summary
+        - analytics
+        - improve
+        - keywords
+      ignore_errors: yes
+
+    - name: Eliminar secrets
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Secret
+        namespace: "{{ namespace }}"
+        state: absent
+        name: "{{ item }}"
+      loop:
+        - gemini-api-key
+        - postgres-secret
+      ignore_errors: yes
+
+    - name: Eliminar configmaps
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: ConfigMap
+        namespace: "{{ namespace }}"
+        state: absent
+        name: "{{ item }}"
+      loop:
+        - postgres-config
+        - backend-config
+      ignore_errors: yes
+
+    - name: Eliminar PVCs
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: PersistentVolumeClaim
+        namespace: "{{ namespace }}"
+        state: absent
+        name: postgres-pvc
+      ignore_errors: yes
+
+    - name: Eliminar namespace text-processor
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+        state: absent
+      ignore_errors: yes
+
+    - name: Desinstalar Prometheus
+      kubernetes.core.helm:
+        name: prometheus
+        release_namespace: monitoring
+        state: absent
+      ignore_errors: yes
+
+    - name: Eliminar namespace monitoring
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: monitoring
+        state: absent
+      ignore_errors: yes
+
+    - name: Eliminar namespace logging
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Namespace
+        name: logging
+        state: absent
+      ignore_errors: yes
+
+    - name: Limpiar imágenes Docker locales (opcional)
+      community.docker.docker_prune:
+        images: yes
+        images_filters:
+          dangling: false
+          label:
+            - "project=text-processor"
+      when: false  # Cambiar a true si quieres limpiar imágenes
+
+    - name: Mostrar resumen de limpieza
+      debug:
+        msg:
+          - "============================================"
+          - "  LIMPIEZA COMPLETADA"
+          - "============================================"
+          - ""
+          - "Recursos eliminados del namespace: {{ namespace }}"
+          - "Monitoring y Logging namespaces eliminados"
+          - ""
+          - "El cluster K3D sigue corriendo."
+          - "Para eliminarlo completamente:"
+          - "  k3d cluster delete {{ cluster_name }}"
+          - "============================================"

@@ -1,0 +1,88 @@
+# ========================
+# Prometheus + Grafana Stack
+# ========================
+grafana:
+  enabled: true
+  adminUser: admin
+  adminPassword: prom-operator
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:
+    enabled: false
+  persistence:
+    enabled: false
+  defaultDashboardsEnabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      folder: /var/lib/grafana/dashboards
+    datasources:
+      enabled: true
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards
+
+  # Dashboards preinstalados
+  dashboards:
+    default:
+      kubernetes-nodes:
+        gnetId: 315
+        revision: 4
+        datasource: Prometheus
+      pods-overview:
+        gnetId: 6417
+        revision: 1
+        datasource: Prometheus
+      cluster-monitoring:
+        gnetId: 6416
+        revision: 1
+        datasource: Prometheus
+
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    podMonitorSelector: {}
+    scrapeInterval: 15s
+    retention: 7d
+    resources:
+      requests:
+        memory: 400Mi
+        cpu: 200m
+    serviceMonitorNamespaceSelector: {}
+    ruleNamespaceSelector: {}
+
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ['alertname']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+    receivers:
+      - name: 'default'
+        email_configs:
+          - to: you@example.com
+            send_resolved: true
+            smarthost: smtp.example.com:587
+            from: alerts@example.com
+            auth_username: alerts@example.com
+            auth_identity: alerts@example.com
+            auth_password: examplepass
+  service:
+    type: ClusterIP

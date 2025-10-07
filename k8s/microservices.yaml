@@ -1,0 +1,244 @@
+---
+# Translation Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: translation
+  namespace: text-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: translation
+  template:
+    metadata:
+      labels:
+        app: translation
+    spec:
+      containers:
+      - name: translation
+        image: text-processor-translation:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8001
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: GEMINI_API_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: translation
+  namespace: text-processor
+spec:
+  selector:
+    app: translation
+  ports:
+  - port: 8001
+    targetPort: 8001
+
+---
+# Summary Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: summary
+  namespace: text-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: summary
+  template:
+    metadata:
+      labels:
+        app: summary
+    spec:
+      containers:
+      - name: summary
+        image: text-processor-summary:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8002
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: GEMINI_API_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: summary
+  namespace: text-processor
+spec:
+  selector:
+    app: summary
+  ports:
+  - port: 8002
+    targetPort: 8002
+
+---
+# Analytics Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+  namespace: text-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics
+  template:
+    metadata:
+      labels:
+        app: analytics
+    spec:
+      containers:
+      - name: analytics
+        image: text-processor-analytics:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8003
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: GEMINI_API_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics
+  namespace: text-processor
+spec:
+  selector:
+    app: analytics
+  ports:
+  - port: 8003
+    targetPort: 8003
+
+---
+# Improve Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: improve
+  namespace: text-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: improve
+  template:
+    metadata:
+      labels:
+        app: improve
+    spec:
+      containers:
+      - name: improve
+        image: text-processor-improve:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8004
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: GEMINI_API_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: improve
+  namespace: text-processor
+spec:
+  selector:
+    app: improve
+  ports:
+  - port: 8004
+    targetPort: 8004
+
+---
+# Keywords Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keywords
+  namespace: text-processor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keywords
+  template:
+    metadata:
+      labels:
+        app: keywords
+    spec:
+      containers:
+      - name: keywords
+        image: text-processor-keywords:v1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8005
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-api-key
+              key: GEMINI_API_KEY
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keywords
+  namespace: text-processor
+spec:
+  selector:
+    app: keywords
+  ports:
+  - port: 8005
+    targetPort: 8005

@@ -1,0 +1,15 @@
+---
+# Variables personalizadas
+gemini_api_key: "TU_API_KEY_AQUI"
+backend_version: "v3"
+frontend_version: "v2"
+microservices_version: "v1"
+
+# Habilitar/deshabilitar componentes
+enable_prometheus: yes
+enable_fluentd: yes
+enable_flux: no
+
+# Configuración de replicas
+backend_min_replicas: 1
+backend_max_replicas: 3 
