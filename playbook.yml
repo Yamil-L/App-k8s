@@ -9,7 +9,7 @@
     project_root: "/mnt/d/U/cloud/parcial/repo-root"
     cluster_name: "mycluster"
     namespace: "text-processor"
-    gemini_api_key: "AIzaSyBe2a4PcYYj8uMJmJdgXFoeapXrb92uQyA"
+    gemini_api_key: ""
     
     # Versiones de imágenes
     backend_version: "v3"
